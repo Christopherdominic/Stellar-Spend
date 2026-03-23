@@ -29,10 +29,6 @@ function getRequiredServerEnv(key: string): string {
   return value;
 }
 
-function getOptionalServerEnv(key: string, defaultValue?: string): string | undefined {
-  return process.env[key] || defaultValue;
-}
-
 // Client-side environment variables (available in browser)
 function getRequiredPublicEnv(key: string): string {
   const value = process.env[key];

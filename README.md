@@ -1,5 +1,7 @@
 # Stellar-Spend
 
+[![CI](https://github.com/whiteghost0001/Stellar-Spend/workflows/CI/badge.svg)](https://github.com/whiteghost0001/Stellar-Spend/actions)
+
 <h4>Convert your Stellar stablecoins to fiat currencies seamlessly</h4>
 
 🚀 A modern off-ramp solution that enables users to convert Stellar stablecoins (USDC, USDT) directly to fiat currencies through Allbridge and Paycrest integrations.

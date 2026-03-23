@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test": "echo \"No tests configured yet\" && exit 0"
   },
   "dependencies": {
     "@allbridge/bridge-core-sdk": "^3.20.0",

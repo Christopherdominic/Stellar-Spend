@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { PAYCREST_WEBHOOK_SECRET } from '@/lib/env';
+// import { PAYCREST_WEBHOOK_SECRET } from '@/lib/env';
 
 // TODO: handle Paycrest webhook events
 export async function POST() {
