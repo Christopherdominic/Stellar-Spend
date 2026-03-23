@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getStellarWalletAdapter, type StellarWallet, type WalletType } from "@/lib/stellar/wallet-adapter";
+import { NEXT_PUBLIC_BASE_RETURN_ADDRESS, NEXT_PUBLIC_STELLAR_USDC_ISSUER } from "@/lib/env";
 
 export function useStellarWallet() {
   const [wallet, setWallet] = useState<StellarWallet | null>(null);
@@ -49,5 +50,19 @@ export function useStellarWallet() {
     }
   }, [wallet]);
 
-  return { wallet, isConnected: !!wallet, isConnecting, error, connect, disconnect, signTransaction };
+  // Example of using public environment variables in client components
+  const getReturnAddress = useCallback(() => NEXT_PUBLIC_BASE_RETURN_ADDRESS, []);
+  const getUsdcIssuer = useCallback(() => NEXT_PUBLIC_STELLAR_USDC_ISSUER, []);
+
+  return { 
+    wallet, 
+    isConnected: !!wallet, 
+    isConnecting, 
+    error, 
+    connect, 
+    disconnect, 
+    signTransaction,
+    getReturnAddress,
+    getUsdcIssuer
+  };
 }
