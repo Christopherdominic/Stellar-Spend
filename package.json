@@ -3,13 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "test": "echo \"No tests configured yet\" && exit 0"
+    "dev": "node ./scripts/run-next.cjs dev --hostname localhost --port 3001",
+    "build": "node ./scripts/run-next.cjs build",
+    "start": "node ./scripts/run-next.cjs start",
+    "lint": "npx -y -p eslint@9.39.4 -p @typescript-eslint/parser@8.46.1 -p eslint-plugin-react@7.37.5 -p eslint-plugin-react-hooks@5.2.0 -p @next/eslint-plugin-next@15.2.0 eslint . --max-warnings 0"
   },
   "dependencies": {
     "@allbridge/bridge-core-sdk": "^3.20.0",
@@ -28,8 +25,6 @@
     "@types/react-dom": "19.0.3",
     "eslint": "^9.39.3",
     "eslint-config-next": "15.2.0",
-    "prettier": "^3.4.2",
-    "prettier-plugin-tailwindcss": "^0.6.9",
     "tailwindcss": "^4.2.1",
     "typescript": "5.7.3"
   }
