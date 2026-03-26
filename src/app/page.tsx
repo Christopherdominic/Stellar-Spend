@@ -13,6 +13,8 @@ import { useStellarWallet } from "@/hooks/useStellarWallet";
 import { useWalletFlow } from "@/hooks/useWalletFlow";
  main
 import { OfframpStep } from "@/types/stellaramp";
+import { useStellarWallet } from "@/hooks/useStellarWallet";
+import { TransactionStorage, type Transaction } from "@/lib/transaction-storage";
 
 export default function Home() {
   const { wallet, isConnecting: isWalletConnecting, error, connect, disconnect } = useStellarWallet();
@@ -23,6 +25,21 @@ export default function Home() {
   const [quote, setQuote] = useState<QuoteResult | null>(null);
   const [modalStep, setModalStep] = useState<OfframpStep>("idle");
   const [modalError, setModalError] = useState<string | undefined>(undefined);
+  const [currentPayload, setCurrentPayload] = useState<OfframpPayload | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
+
+  const isConnected = !!wallet;
+
+  // Sync wallet state with flow state via useEffect
+  useEffect(() => {
+    if (isWalletConnecting) {
+      setConnecting();
+    } else if (isConnected) {
+      setConnected();
+    } else {
+      setPreConnect();
+    }
+  }, [isWalletConnecting, isConnected, setConnecting, setConnected, setPreConnect]);
 
   const handleConnect = useCallback(async () => {
     try {
@@ -46,7 +63,7 @@ export default function Home() {
       await new Promise((r) => setTimeout(r, 1500));
       setModalStep(step);
     }
-  }, []);
+  }, [wallet?.publicKey]);
 
   return (
     <main className="min-h-screen p-4 bg-[#0a0a0a]">
@@ -114,7 +131,7 @@ export default function Home() {
           </div>
           
           <div>
-            <RecentOfframpsTable />
+            <RecentOfframpsTable userTransactions={userTransactions} />
           </div>
           <div className="col-span-1 min-[1101px]:col-span-2 mt-4 max-[1100px]:block">
             {/* The ProgressSteps component now consumes the memoized steps from useWalletFlow */}
