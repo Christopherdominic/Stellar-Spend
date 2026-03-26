@@ -1,113 +1,131 @@
 "use client";
 
-import { Transaction } from "@/lib/transaction-storage";
 import { cn } from "@/lib/cn";
+import type { RecentOfframpRow } from "@/types/stellaramp";
 
-interface RecentOfframpsTableProps {
-  userTransactions: Transaction[];
+// ---------------------------------------------------------------------------
+// Mock data — replaced by real TransactionStorage rows when wired up
+// ---------------------------------------------------------------------------
+
+const MOCK_ROWS: RecentOfframpRow[] = [
+  { txHash: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", usdc: "120.00", naira: "₦192,000", status: "COMPLETE" },
+  { txHash: "f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6b5a4f9e8", usdc: "50.50",  naira: "₦80,800",  status: "SETTLING" },
+  { txHash: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12", usdc: "200.00", naira: "₦320,000", status: "COMPLETE" },
+];
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
+
+export interface RecentOfframpsTableProps {
+  rows?: ReadonlyArray<RecentOfframpRow>;
 }
 
-function truncateHash(hash: string | undefined, length: number = 8): string {
-  if (!hash) return "—";
-  return `${hash.slice(0, length)}...${hash.slice(-length)}`;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function truncateTxHash(hash: string): string {
+  if (hash.length <= 12) return hash;
+  return `${hash.slice(0, 6)}...${hash.slice(-6)}`;
 }
 
-function mapStatus(status: Transaction["status"]): string {
-  const statusMap: Record<Transaction["status"], string> = {
-    pending: "SETTLING",
-    completed: "COMPLETE",
-    failed: "FAILED",
-  };
-  return statusMap[status] || status;
-}
-
-function getStatusColor(status: Transaction["status"]): string {
-  const colorMap: Record<Transaction["status"], string> = {
-    pending: "text-yellow-500",
-    completed: "text-green-500",
-    failed: "text-red-500",
-  };
-  return colorMap[status] || "text-gray-500";
-}
-
-function RecentOfframpRow({ transaction }: { transaction: Transaction }) {
-  const displayStatus = mapStatus(transaction.status);
-  const statusColor = getStatusColor(transaction.status);
-
+function StatusBadge({ status }: { status: RecentOfframpRow["status"] }) {
   return (
-    <tr className="border-t border-[#222222] hover:bg-[#0f0f0f] transition-colors">
-      <td className="px-4 py-3 text-sm text-[#cccccc]">
-        {truncateHash(transaction.stellarTxHash)}
-      </td>
-      <td className="px-4 py-3 text-sm text-[#cccccc]">
-        {transaction.amount} USDC
-      </td>
-      <td className="px-4 py-3 text-sm text-[#999999]">
-        {transaction.currency}
-      </td>
-      <td className={cn("px-4 py-3 text-sm font-semibold", statusColor)}>
-        {displayStatus}
-      </td>
-    </tr>
+    <span
+      className={cn(
+        "inline-block px-2.5 py-0.5 text-[10px] tracking-widest uppercase font-semibold",
+        status === "SETTLING"
+          ? "bg-[#c9a962] text-[#0a0a0a]"
+          : "border border-white text-white bg-transparent"
+      )}
+    >
+      {status}
+    </span>
   );
 }
 
-export default function RecentOfframpsTable({
-  userTransactions,
-}: RecentOfframpsTableProps) {
-  const displayTransactions = userTransactions.slice(0, 10);
-  const hasTransactions = displayTransactions.length > 0;
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
+export default function RecentOfframpsTable({ rows = MOCK_ROWS }: RecentOfframpsTableProps) {
   return (
     <div
       data-testid="RecentOfframpsTable"
-      className="border border-[#333333] bg-[#111111] rounded-lg overflow-hidden"
+      className="border border-[#333333] bg-[#111111]"
     >
-      <div className="px-5 py-4 border-b border-[#222222]">
+      {/* Section header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-[#333333]">
         <span className="text-[10px] tracking-[0.2em] text-[#777777] uppercase">
           Recent Offramps
         </span>
+        <button
+          className={cn(
+            "text-[10px] tracking-widest uppercase text-[#c9a962] border border-[#c9a962] px-3 py-1",
+            "hover:bg-[#c9a962] hover:text-[#0a0a0a] transition-colors duration-150",
+            "focus:outline-none focus-visible:ring-1 focus-visible:ring-[#c9a962]"
+          )}
+        >
+          View All
+        </button>
       </div>
 
-      {!hasTransactions ? (
-        <div className="px-5 py-12 text-center">
-          <p className="text-[#777777] text-sm">No transactions yet</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-[#222222] bg-[#0a0a0a]">
-                <th className="px-4 py-3 text-[10px] tracking-[0.2em] text-[#777777] uppercase font-semibold">
-                  Tx Hash
+      {/* Horizontally scrollable table */}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[520px] border-collapse">
+          {/* Gold header row */}
+          <thead>
+            <tr className="bg-[#c9a962]">
+              {["TX HASH", "USDC", "NAIRA", "STATUS"].map((col) => (
+                <th
+                  key={col}
+                  className="px-5 py-2.5 text-left text-[10px] tracking-[0.18em] font-semibold text-[#0a0a0a] uppercase whitespace-nowrap"
+                >
+                  {col}
                 </th>
-                <th className="px-4 py-3 text-[10px] tracking-[0.2em] text-[#777777] uppercase font-semibold">
-                  Amount
-                </th>
-                <th className="px-4 py-3 text-[10px] tracking-[0.2em] text-[#777777] uppercase font-semibold">
-                  Currency
-                </th>
-                <th className="px-4 py-3 text-[10px] tracking-[0.2em] text-[#777777] uppercase font-semibold">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayTransactions.map((tx) => (
-                <RecentOfframpRow key={tx.id} transaction={tx} />
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </tr>
+          </thead>
 
-      {userTransactions.length > 10 && (
-        <div className="px-5 py-3 border-t border-[#222222] text-center">
-          <button className="text-[10px] tracking-[0.2em] text-[#c9a962] uppercase font-semibold hover:text-[#d4af37] transition-colors">
-            View All ({userTransactions.length})
-          </button>
-        </div>
-      )}
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-5 py-8 text-center text-xs text-[#555555] tracking-wider"
+                >
+                  No transactions yet
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, i) => (
+                <tr
+                  key={row.txHash}
+                  className={cn(
+                    "border-b border-[#222222] transition-colors duration-100",
+                    i % 2 === 0 ? "bg-[#111111]" : "bg-[#0f0f0f]",
+                    "hover:bg-[#1a1a1a]"
+                  )}
+                >
+                  <td className="px-5 py-3 text-xs text-[#777777] font-mono whitespace-nowrap">
+                    {truncateTxHash(row.txHash)}
+                  </td>
+                  <td className="px-5 py-3 text-xs text-white tabular-nums whitespace-nowrap">
+                    {row.usdc} USDC
+                  </td>
+                  <td className="px-5 py-3 text-xs text-white tabular-nums whitespace-nowrap">
+                    {row.naira}
+                  </td>
+                  <td className="px-5 py-3 whitespace-nowrap">
+                    <StatusBadge status={row.status} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
