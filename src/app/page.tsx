@@ -25,9 +25,7 @@ export default function Home() {
   const [currentPayload, setCurrentPayload] = useState<OfframpPayload | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
 
-  const isConnected = !!wallet;
-
-  // Sync wallet state with flow state via useEffect
+  // Sync wallet flow state with wallet connection state
   useEffect(() => {
     if (isWalletConnecting) {
       setConnecting();
@@ -41,14 +39,17 @@ export default function Home() {
   const { pollPayoutStatus } = usePollPayoutStatus();
 
   const handleConnect = useCallback(async () => {
-    try {
-      await connect();
-    } catch {
-      // error is surfaced via walletError from useStellarWallet
+    setConnecting();
+    const result = await connect();
+    if (result) {
+      setConnected();
+    } else {
+      setPreConnect();
     }
-  }, [connect]);
+  }, [connect, setConnecting, setConnected, setPreConnect]);
 
   const handleDisconnect = useCallback(() => {
+    // useStellarWallet.disconnect() calls adapter.disconnect() + TransactionStorage.clear()
     disconnect();
     setAmount("");
     setCurrency("");
@@ -178,10 +179,10 @@ export default function Home() {
           </div>
 
           <div>
-            <RecentOfframpsTable userTransactions={userTransactions} />
+            <RecentOfframpsTable />
           </div>
-          <div className="col-span-1 min-[1101px]:col-span-2 mt-4 max-[1100px]:block">
-            {/* The ProgressSteps component now consumes the memoized steps from useWalletFlow */}
+
+          <div className="col-span-1 min-[1101px]:col-span-2 mt-4">
             <ProgressSteps
               isConnected={isConnected}
               isConnecting={isWalletConnecting}
