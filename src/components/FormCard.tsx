@@ -13,7 +13,24 @@ import { buildQuote, calculateBridgeAmount } from "@/lib/offramp/utils/quote-fet
 
 // ---------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+interface GasFeeOptions {
+  native: { int: string; float: string } | null;
+  stablecoin: { int: string; float: string } | null;
+}
+
+export interface FeeOption {
+  label: string;
+  amount: string;
+  method: "USDC" | "XLM";
+}
+
+export interface FeeOption {
+  label: string;
+  amount: string;
+  method: "native" | "stablecoin";
+}
 
 export interface FormCardProps {
   /** Wallet state */
@@ -218,10 +235,6 @@ function Field({ label, value, loading, placeholder = "—" }: FieldProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Fee method selector
-// ---------------------------------------------------------------------------
-
 interface FeeMethodSelectorProps {
   value: FeeMethod;
   onChange: (v: FeeMethod) => void;
@@ -270,15 +283,6 @@ function FeeMethodSelector({ value, onChange, usdcFee, xlmFee, disabled }: FeeMe
   );
 }
 
-// ---------------------------------------------------------------------------
-// Estimated payout box
-// ---------------------------------------------------------------------------
-
-interface PayoutBoxProps {
-  quote: QuoteResult;
-  currency: string;
-}
-
 function formatPayout(amount: string, currency: string): string {
   const num = parseFloat(amount);
   if (isNaN(num)) return "—";
@@ -295,6 +299,11 @@ function formatPayout(amount: string, currency: string): string {
   } catch {
     return `${currency.toUpperCase()} ${num.toFixed(2)}`;
   }
+}
+
+interface PayoutBoxProps {
+  quote: QuoteResult;
+  currency: string;
 }
 
 function PayoutBox({ quote, currency }: PayoutBoxProps) {
@@ -315,10 +324,6 @@ function PayoutBox({ quote, currency }: PayoutBoxProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// CTA button
-// ---------------------------------------------------------------------------
-
 type CtaState = "disconnected" | "connecting" | "ready" | "submitting" | "invalid";
 
 function getCtaLabel(state: CtaState): string {
@@ -335,10 +340,6 @@ function getCtaDisabled(state: CtaState): boolean {
   return state === "connecting" || state === "submitting" || state === "invalid";
 }
 
-// ---------------------------------------------------------------------------
-// Main FormCard component
-// ---------------------------------------------------------------------------
-
 export default function FormCard({
   isConnected,
   isConnecting,
@@ -349,7 +350,6 @@ export default function FormCard({
   onAmountChange,
   onCurrencyChange,
 }: FormCardProps) {
-  // --- Form state ---
   const [amount, setAmount] = useState("");
   const [feeMethod, setFeeMethod] = useState<FeeMethod>("USDC");
   const [currency, setCurrency] = useState("");
@@ -357,16 +357,16 @@ export default function FormCard({
   const [institution, setInstitution] = useState("");
   const [accountName, setAccountName] = useState("");
 
-  // --- Remote data ---
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [quote, setQuote] = useState<QuoteResult | null>(null);
+  const [gasFees, setGasFees] = useState<GasFeeOptions | null>(null);
 
-  // --- Loading / error states ---
   const [isCurrenciesLoading, setIsCurrenciesLoading] = useState(false);
   const [isInstitutionsLoading, setIsInstitutionsLoading] = useState(false);
   const [isQuoteLoading, setIsQuoteLoading] = useState(false);
   const [isVerifyingAccount, setIsVerifyingAccount] = useState(false);
+  const [isGasFeesLoading, setIsGasFeesLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [amountError, setAmountError] = useState("");
@@ -374,13 +374,9 @@ export default function FormCard({
   const [quoteError, setQuoteError] = useState("");
   const [verifyError, setVerifyError] = useState("");
 
-  // Debounce refs
   const quoteDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const verifyDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ---------------------------------------------------------------------------
-  // Reset on resetKey change
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (resetKey === 0) return;
     setAmount("");
@@ -398,6 +394,47 @@ export default function FormCard({
 
   // ---------------------------------------------------------------------------
   // Fetch currencies on mount
+  // -----------------------------------------------------------------------------
+  useEffect(() => {
+    setIsCurrenciesLoading(true);
+    fetch("/api/offramp/currencies")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setCurrencies(data);
+          // Default to NGN if available (per issue #70)
+          const hasNGN = data.some((c: Currency) => c.code === 'NGN');
+          if (hasNGN) {
+            setCurrency('NGN');
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsCurrenciesLoading(false));
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Fetch gas fee options on mount (per issue #69)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const fetchGasFees = async () => {
+      setIsGasFeesLoading(true);
+      try {
+        const res = await fetch('/api/offramp/bridge/gas-fee-options');
+        const data = await res.json();
+        setGasFees(data);
+      } catch (error) {
+        console.error('Failed to fetch gas fees:', error);
+        setGasFees(null);
+      } finally {
+        setIsGasFeesLoading(false);
+      }
+    };
+    fetchGasFees();
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Fetch institutions when currency changes
   // ---------------------------------------------------------------------------
   useEffect(() => {
     setIsCurrenciesLoading(true);
@@ -410,9 +447,6 @@ export default function FormCard({
       .finally(() => setIsCurrenciesLoading(false));
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Fetch institutions when currency changes
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!currency) {
       setInstitutions([]);
@@ -431,21 +465,6 @@ export default function FormCard({
       .finally(() => setIsInstitutionsLoading(false));
   }, [currency]);
 
-  // ---------------------------------------------------------------------------
-  // Debounced quote fetch (500ms)
-  // 
-  // Acceptance Criteria:
-  // - Quote updates within 1 second of typing (500ms debounce + network time)
-  // - Invalid quotes (NaN, negative) are rejected
-  // - Loading state shown during fetch
-  // 
-  // Flow:
-  // 1. Validate amount and currency
-  // 2. Call /api/offramp/quote endpoint
-  // 3. Endpoint handles: Allbridge SDK init, fee calculation, Paycrest rate fetch
-  // 4. Validate quote with isValidQuote()
-  // 5. Call onPricingUpdate callback with new quote
-  // ---------------------------------------------------------------------------
   const fetchQuote = useCallback(
     (amt: string, cur: string, fee: FeeMethod) => {
       // Clear any pending debounce
@@ -497,7 +516,7 @@ export default function FormCard({
           onQuoteChange?.(result);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "Could not fetch quote";
-          setQuoteError(msg);
+          if (!msg.includes("Not implemented")) setQuoteError(msg);
           setQuote(null);
           onQuoteChange?.(null);
         } finally {
@@ -508,9 +527,6 @@ export default function FormCard({
     [onQuoteChange]
   );
 
-  // ---------------------------------------------------------------------------
-  // Auto-verify account
-  // ---------------------------------------------------------------------------
   const verifyAccount = useCallback(
     (accNum: string, inst: string, cur: string) => {
       if (verifyDebounceRef.current) clearTimeout(verifyDebounceRef.current);
@@ -544,20 +560,15 @@ export default function FormCard({
     []
   );
 
-  // ---------------------------------------------------------------------------
-  // Field change handlers
-  // ---------------------------------------------------------------------------
   function handleAmountChange(val: string) {
     setAmount(val);
     onAmountChange?.(val);
-
     const num = parseFloat(val);
     if (val && (isNaN(num) || num < 0.7)) {
       setAmountError("Minimum amount is 0.7 USDC");
     } else {
       setAmountError("");
     }
-
     fetchQuote(val, currency, feeMethod);
   }
 
@@ -573,7 +584,6 @@ export default function FormCard({
   }
 
   function handleAccountNumberChange(val: string) {
-    // Only allow digits, max 10
     const digits = val.replace(/\D/g, "").slice(0, 10);
     setAccountNumber(digits);
     setAccountError(digits.length > 0 && digits.length < 10 ? "Account number must be 10 digits" : "");
@@ -586,9 +596,6 @@ export default function FormCard({
     verifyAccount(accountNumber, val, currency);
   }
 
-  // ---------------------------------------------------------------------------
-  // Form validity
-  // ---------------------------------------------------------------------------
   const isFormValid =
     isConnected &&
     validateAmount(amount) &&
@@ -601,9 +608,6 @@ export default function FormCard({
     !amountError &&
     !accountError;
 
-  // ---------------------------------------------------------------------------
-  // CTA state
-  // ---------------------------------------------------------------------------
   function getCtaState(): CtaState {
     if (!isConnected && !isConnecting) return "disconnected";
     if (isConnecting) return "connecting";
@@ -614,139 +618,95 @@ export default function FormCard({
 
   const ctaState = getCtaState();
 
-  // ---------------------------------------------------------------------------
-  // Submit
-  // ---------------------------------------------------------------------------
-  async function handleSubmit() {
-    if (!isConnected) { onConnect(); return; }
+  async function handleSubmitForm() {
     if (!isFormValid || !quote) return;
-
     setIsSubmitting(true);
     try {
-      await onSubmit({ amount, currency, institution, accountIdentifier: accountNumber, accountName, feeMethod, quote });
+      await onSubmit({
+        amount,
+        currency,
+        institution,
+        accountIdentifier: accountNumber,
+        accountName,
+        feeMethod,
+        quote,
+      });
+    } catch (err) {
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-  const currencyOptions = currencies.map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` }));
-  const institutionOptions = institutions.map((i) => ({ value: i.code, label: i.name }));
-
   return (
-    <div className="border border-[#333333] bg-[#111111] flex flex-col">
-      {/* Header */}
-      <div className="px-5 py-4 border-b border-[#333333]">
-        <h2 className="font-space-grotesk font-bold text-white text-base tracking-wide">
-          {isConnecting ? "CONNECTING WALLET" : isConnected ? "READY TO OFFRAMP" : "CONNECT WALLET"}
-        </h2>
-        <p className="text-[11px] text-[#777777] mt-1">
-          {isConnecting
-            ? "Waiting for wallet signature before opening the off-ramp form."
-            : isConnected
-            ? "Connected wallet detected. Confirm amount and settlement bank details."
-            : "Securely connect a Stellar-compatible wallet before entering payout details."}
-        </p>
-      </div>
-
-      {/* Form body */}
-      <div className="px-5 py-5 flex flex-col gap-5">
-        {/* Amount */}
+    <div className="flex flex-col gap-6">
+      <div className="bg-[#111111] border border-[#333333] p-6 flex flex-col gap-6">
         <InputField
-          label="USDC Amount"
-          id="usdc-amount"
-          type="number"
+          label="Amount (USDC)"
+          id="amount"
           value={amount}
           onChange={handleAmountChange}
+          type="number"
           placeholder="0.00"
-          min="0.7"
-          step="0.000001"
-          inputMode="decimal"
-          disabled={!isConnected}
-          suffix={isQuoteLoading ? "..." : quote ? `≈ ${formatPayout(quote.destinationAmount, currency)}` : "USDC"}
-          error={amountError}
+          suffix={isQuoteLoading ? "..." : "USDC"}
+          error={amountError || quoteError}
+          disabled={!isConnected || isSubmitting}
         />
 
-        {/* Gas fee method */}
         <FeeMethodSelector
           value={feeMethod}
           onChange={handleFeeMethodChange}
-          usdcFee={null}
-          xlmFee={null}
+          usdcFee={gasFees?.stablecoin?.float || null}
+          xlmFee={gasFees?.native?.float || null}
           disabled={!isConnected}
         />
 
-        {/* Currency */}
-        <SelectField
-          label="Payout Currency"
-          id="payout-currency"
-          value={currency}
-          onChange={handleCurrencyChange}
-          options={currencyOptions}
-          placeholder="Select currency..."
-          disabled={!isConnected}
-          loading={isCurrenciesLoading}
-        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <SelectField
+            label="Currency"
+            id="currency"
+            value={currency}
+            options={currencies.map((c) => ({ value: c.code, label: `${c.name} (${c.code})` }))}
+            onChange={handleCurrencyChange}
+            loading={isCurrenciesLoading}
+            disabled={!isConnected || isSubmitting}
+          />
+          <SelectField
+            label="Bank / Institution"
+            id="institution"
+            value={institution}
+            options={institutions.map((i) => ({ value: i.code, label: i.name }))}
+            onChange={handleInstitutionChange}
+            loading={isInstitutionsLoading}
+            disabled={!currency || !isConnected || isSubmitting}
+            placeholder={currency ? "Select bank..." : "Select currency first"}
+          />
+        </div>
 
-        {/* Account number */}
         <InputField
           label="Account Number"
-          id="account-number"
+          id="accountNumber"
           value={accountNumber}
           onChange={handleAccountNumberChange}
-          placeholder="0000000000"
-          maxLength={10}
           inputMode="numeric"
-          disabled={!isConnected || !currency}
-          error={accountError}
+          placeholder="0000000000"
+          error={accountError || verifyError}
+          disabled={!institution || !isConnected || isSubmitting}
         />
 
-        {/* Bank / Institution */}
-        <SelectField
-          label="Bank / Institution"
-          id="institution"
-          value={institution}
-          onChange={handleInstitutionChange}
-          options={institutionOptions}
-          placeholder="Select bank..."
-          disabled={!isConnected || !currency}
-          loading={isInstitutionsLoading}
-        />
+        <Field label="Account Name" value={accountName} loading={isVerifyingAccount} />
 
-        {/* Account name (read-only, auto-resolved) */}
-        <Field
-          label="Account Name"
-          value={accountName}
-          loading={isVerifyingAccount}
-          placeholder="Auto-resolved after account number entry"
-        />
-        {verifyError && (
-          <span className="text-[10px] text-red-400 tracking-wide -mt-3">{verifyError}</span>
-        )}
+        {quote && <PayoutBox quote={quote} currency={currency} />}
 
-        {/* Estimated payout box */}
-        {quote && !isQuoteLoading && (
-          <PayoutBox quote={quote} currency={currency} />
-        )}
-        {quoteError && (
-          <span className="text-[10px] text-red-400 tracking-wide">{quoteError}</span>
-        )}
-
-        {/* CTA */}
         <button
-          type="button"
-          onClick={handleSubmit}
+          onClick={ctaState === "disconnected" ? onConnect : handleSubmitForm}
           disabled={getCtaDisabled(ctaState)}
           className={cn(
-            "w-full py-3 text-xs tracking-widest border transition-colors duration-150",
-            "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a962] focus-visible:ring-offset-2 focus-visible:ring-offset-[#111111]",
+            "w-full py-4 text-xs font-bold tracking-[0.2em] transition-all duration-200",
             ctaState === "ready"
-              ? "border-[#c9a962] bg-[#c9a962] text-[#0a0a0a] hover:bg-[#b8943f]"
-              : ctaState === "disconnected"
-              ? "border-[#c9a962] bg-transparent text-[#c9a962] hover:bg-[#c9a962] hover:text-[#0a0a0a]"
-              : "border-[#333333] bg-transparent text-[#777777] cursor-not-allowed opacity-60"
+              ? "bg-[#c9a962] text-black hover:bg-[#d4b982]"
+              : "bg-[#222222] text-[#555555] cursor-not-allowed border border-[#333333]",
+            (ctaState === "connecting" || ctaState === "submitting") && "animate-pulse"
           )}
         >
           {getCtaLabel(ctaState)}
