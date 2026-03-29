@@ -132,14 +132,19 @@ export async function buildSwapAndBridgeTx(
     });
   }
 
-  // Assemble transaction with bumped fee (1.5x of base + minResourceFee)
+  // Compute and apply bumped fee logic per #146
+  const originalFee = parseInt(tx.fee);
+  const simMinFee = parseInt(simulationResponse.minResourceFee || '0');
+  const targetFee = Math.ceil((originalFee + simMinFee) * 1.5);
+  const preAssemblyFee = Math.max(targetFee - simMinFee, originalFee);
+
+  console.log(`[Fee Bump] originalFee: ${originalFee}, simMinFee: ${simMinFee}, targetFee: ${targetFee}, preAssemblyFee: ${preAssemblyFee}`);
+
+  // Mutate tx._fee before assembly to ensure resource fees are added correctly
+  (tx as any)._fee = preAssemblyFee.toString();
+
+  // Assemble transaction
   const assembledTx = StellarSdk.rpc.assembleTransaction(tx, simulationResponse);
-  
-  const baseFee = parseInt(assembledTx.fee);
-  const minResourceFee = parseInt(simulationResponse.minResourceFee || '0');
-  const bumpedFee = Math.ceil((baseFee + minResourceFee) * 1.5);
-  
-  assembledTx.fee = bumpedFee.toString();
 
   // Return base64 XDR
   return assembledTx.toXDR();
