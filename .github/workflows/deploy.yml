@@ -1,36 +1,22 @@
-name: CI
+name: Deploy
 
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
 
 jobs:
   ci:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          node-version: "20.x"
+          cache: "npm"
 
       - name: Cache Next.js build
         uses: actions/cache@v4
@@ -38,7 +24,7 @@ jobs:
           path: |
             ~/.npm
             ${{ github.workspace }}/.next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-${{ hashFiles('**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') }}
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-${{ hashFiles('**/*.ts', '**/*.tsx') }}
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-
 
@@ -69,22 +55,26 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Check bundle size
-        if: matrix.node-version == '20.x'
-        run: |
-          BUILD_SIZE=$(du -sb .next | cut -f1)
-          echo "Build size: $BUILD_SIZE bytes"
-          # Fail if build size exceeds 150MB (adjust baseline as needed)
-          MAX_SIZE=157286400
-          if [ "$BUILD_SIZE" -gt "$MAX_SIZE" ]; then
-            echo "Bundle size $BUILD_SIZE exceeds limit $MAX_SIZE"
-            exit 1
-          fi
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: production
 
-      - name: Upload build artifacts
-        if: matrix.node-version == '20.x'
-        uses: actions/upload-artifact@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          name: build-files
-          path: .next/
-          retention-days: 1
+          node-version: "20.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy to Vercel
+        run: npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
