@@ -76,3 +76,40 @@ export async function getAllbridgeTokens(sdk: AllbridgeCoreSdk): Promise<{
     base: { chain: baseChain, usdc: baseUsdc },
   };
 }
+
+/**
+ * Get bridge quote with receive amount, fee, and estimated time
+ */
+export async function getAllbridgeQuote(
+  sdk: AllbridgeCoreSdk,
+  sourceToken: TokenWithChainDetails,
+  destinationToken: TokenWithChainDetails,
+  amount: string
+): Promise<{
+  receiveAmount: string;
+  fee: string;
+  estimatedTime: number;
+}> {
+  // Get the amount to be received after bridge fees
+  const amountToBeReceived = await sdk.getAmountToBeReceived(
+    amount,
+    sourceToken,
+    destinationToken
+  );
+
+  // Calculate fee as difference between sent and received amounts
+  const fee = (parseFloat(amount) - parseFloat(amountToBeReceived)).toString();
+
+  // Get estimated transfer time in milliseconds
+  const estimatedTime = await sdk.getAverageTransferTime(
+    sourceToken,
+    destinationToken,
+    Messenger.ALLBRIDGE
+  );
+
+  return {
+    receiveAmount: amountToBeReceived,
+    fee,
+    estimatedTime,
+  };
+}
