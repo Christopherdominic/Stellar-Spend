@@ -3,6 +3,8 @@ import { env } from '@/lib/env';
 import { withAllbridgeTimeout } from '@/lib/offramp/utils/timeout';
 import { ErrorHandler } from '@/lib/error-handler';
 
+export const maxDuration = 20;
+
 export interface GasFeeOptions {
   feeOptions: {
     native: { int: string; float: string };
