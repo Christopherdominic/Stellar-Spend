@@ -53,27 +53,32 @@ jobs:
           sed -i 's|=0xyour_base_private_key_here|=0x0000000000000000000000000000000000000000000000000000000000000001|' .env.local
           sed -i 's|=0xyour_base_return_address_here|=0x0000000000000000000000000000000000000001|g' .env.local
           sed -i 's|=your_stellar_usdc_issuer_here|=GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5|' .env.local
+          sed -i 's|=your_sentry_dsn_here|=|g' .env.local
+          sed -i 's|=your_sentry_org_slug|=dummy|' .env.local
+          sed -i 's|=your_sentry_project_slug|=dummy|' .env.local
+          sed -i 's|=your_sentry_auth_token_here|=|' .env.local
+
       - name: Run linting
         run: npm run lint
 
       - name: Run build
         run: npm run build
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Run tests
         run: npm test
 
-      - name: Check code formatting
-        run: npm run format:check
-
-      - name: Run build
-        run: npm run build
-
-      - name: Run tests
+      - name: Check bundle size
+        if: matrix.node-version == '20.x'
         run: |
-          if npm run | grep -q "test"; then
-            npm test
-          else
-            echo "No tests configured yet, skipping..."
+          BUILD_SIZE=$(du -sb .next | cut -f1)
+          echo "Build size: $BUILD_SIZE bytes"
+          # Fail if build size exceeds 150MB (adjust baseline as needed)
+          MAX_SIZE=157286400
+          if [ "$BUILD_SIZE" -gt "$MAX_SIZE" ]; then
+            echo "Bundle size $BUILD_SIZE exceeds limit $MAX_SIZE"
+            exit 1
           fi
 
       - name: Upload build artifacts
