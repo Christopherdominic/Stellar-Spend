@@ -1,10 +1,48 @@
 import { AllbridgeCoreSdk, nodeRpcUrlsDefault, ChainDetailsMap, TokenWithChainDetails } from '@allbridge/bridge-core-sdk';
 
+// ─── Module-level SDK singleton ───────────────────────────────────────────────
+
+/** Cached SDK instance (never replaced once set) */
+let _sdkInstance: AllbridgeCoreSdk | null = null;
+
+// ─── 5-minute TTL cache helpers ───────────────────────────────────────────────
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+
+let _chainDetailsCache: CacheEntry<ChainDetailsMap> | null = null;
+let _tokenInfoCache: CacheEntry<{ stellar: AllbridgeTokenInfo; base: AllbridgeTokenInfo }> | null = null;
+
+function isFresh<T>(entry: CacheEntry<T> | null): entry is CacheEntry<T> {
+  return entry !== null && Date.now() < entry.expiresAt;
+}
+
+function makeEntry<T>(value: T): CacheEntry<T> {
+  return { value, expiresAt: Date.now() + CACHE_TTL_MS };
+}
+
+/** Invalidate all caches (called on any SDK error) */
+export function invalidateSdkCache(): void {
+  _sdkInstance = null;
+  _chainDetailsCache = null;
+  _tokenInfoCache = null;
+}
+
+// ─── SDK initialisation ───────────────────────────────────────────────────────
+
 /**
- * Initialize the Allbridge Core SDK with proper RPC URLs
- * Maps environment variables to the correct chain keys
+ * Initialize the Allbridge Core SDK with proper RPC URLs.
+ * Returns the cached instance on subsequent calls — no re-initialisation cost.
  */
 export function initializeAllbridgeSdk(): AllbridgeCoreSdk {
+  if (_sdkInstance) {
+    return _sdkInstance;
+  }
+
   const rpcUrls = { ...nodeRpcUrlsDefault };
 
   // Map Soroban RPC URL to SRB (Soroban chain key)
@@ -24,7 +62,6 @@ export function initializeAllbridgeSdk(): AllbridgeCoreSdk {
   // Legacy fallback for STELLAR_RPC_URL
   const legacyRpcUrl = process.env.STELLAR_RPC_URL;
   if (legacyRpcUrl && !sorobanRpcUrl && !horizonUrl) {
-    // Detect if it's a Horizon URL (contains 'horizon') or Soroban RPC
     if (legacyRpcUrl.includes('horizon')) {
       rpcUrls.STLR = legacyRpcUrl;
       console.log(`[Allbridge SDK] Using legacy RPC as Horizon: ${legacyRpcUrl}`);
@@ -34,8 +71,33 @@ export function initializeAllbridgeSdk(): AllbridgeCoreSdk {
     }
   }
 
-  return new AllbridgeCoreSdk(rpcUrls);
+  _sdkInstance = new AllbridgeCoreSdk(rpcUrls);
+  console.log('[Allbridge SDK] Initialized new SDK instance');
+  return _sdkInstance;
 }
+
+// ─── Cached chainDetailsMap ───────────────────────────────────────────────────
+
+/**
+ * Fetch chain details, caching the result for 5 minutes.
+ * Invalidates cache and rethrows on error.
+ */
+export async function getCachedChainDetailsMap(sdk: AllbridgeCoreSdk): Promise<ChainDetailsMap> {
+  if (isFresh(_chainDetailsCache)) {
+    return _chainDetailsCache.value;
+  }
+
+  try {
+    const details = await sdk.chainDetailsMap();
+    _chainDetailsCache = makeEntry(details);
+    return details;
+  } catch (error) {
+    invalidateSdkCache();
+    throw error;
+  }
+}
+
+// ─── Token info ───────────────────────────────────────────────────────────────
 
 interface AllbridgeTokenInfo {
   chain: ChainDetailsMap[string];
@@ -43,42 +105,57 @@ interface AllbridgeTokenInfo {
 }
 
 /**
- * Fetch Stellar and Base USDC token information from Allbridge SDK
+ * Fetch Stellar and Base USDC token information from Allbridge SDK.
+ * Caches the result for 5 minutes; invalidates cache on error.
  */
 export async function getAllbridgeTokens(sdk: AllbridgeCoreSdk): Promise<{
   stellar: AllbridgeTokenInfo;
   base: AllbridgeTokenInfo;
 }> {
-  const chainDetailsMap = await sdk.chainDetailsMap();
-
-  // Extract Stellar chain (SRB) and find USDC token
-  const stellarChain = chainDetailsMap.SRB;
-  if (!stellarChain) {
-    throw new Error('Stellar chain (SRB) not found in Allbridge chain details');
-  }
-  const stellarUsdc = stellarChain.tokens.find((token) => token.symbol === 'USDC');
-  if (!stellarUsdc) {
-    throw new Error('USDC token not found on Stellar chain');
+  if (isFresh(_tokenInfoCache)) {
+    return _tokenInfoCache.value;
   }
 
-  // Extract Base chain (BAS) and find USDC token
-  const baseChain = chainDetailsMap.BAS;
-  if (!baseChain) {
-    throw new Error('Base chain (BAS) not found in Allbridge chain details');
-  }
-  const baseUsdc = baseChain.tokens.find((token) => token.symbol === 'USDC');
-  if (!baseUsdc) {
-    throw new Error('USDC token not found on Base chain');
-  }
+  try {
+    const chainDetailsMap = await getCachedChainDetailsMap(sdk);
 
-  return {
-    stellar: { chain: stellarChain, usdc: stellarUsdc },
-    base: { chain: baseChain, usdc: baseUsdc },
-  };
+    // Extract Stellar chain (SRB) and find USDC token
+    const stellarChain = chainDetailsMap.SRB;
+    if (!stellarChain) {
+      throw new Error('Stellar chain (SRB) not found in Allbridge chain details');
+    }
+    const stellarUsdc = stellarChain.tokens.find((token: TokenWithChainDetails) => token.symbol === 'USDC');
+    if (!stellarUsdc) {
+      throw new Error('USDC token not found on Stellar chain');
+    }
+
+    // Extract Base chain (BAS) and find USDC token
+    const baseChain = chainDetailsMap.BAS;
+    if (!baseChain) {
+      throw new Error('Base chain (BAS) not found in Allbridge chain details');
+    }
+    const baseUsdc = baseChain.tokens.find((token: TokenWithChainDetails) => token.symbol === 'USDC');
+    if (!baseUsdc) {
+      throw new Error('USDC token not found on Base chain');
+    }
+
+    const result = {
+      stellar: { chain: stellarChain, usdc: stellarUsdc },
+      base: { chain: baseChain, usdc: baseUsdc },
+    };
+
+    _tokenInfoCache = makeEntry(result);
+    return result;
+  } catch (error) {
+    invalidateSdkCache();
+    throw error;
+  }
 }
 
+// ─── Quote ────────────────────────────────────────────────────────────────────
+
 /**
- * Get bridge quote with receive amount, fee, and estimated time
+ * Get bridge quote with receive amount, fee, and estimated time.
  */
 export async function getAllbridgeQuote(
   sdk: AllbridgeCoreSdk,
@@ -90,26 +167,26 @@ export async function getAllbridgeQuote(
   fee: string;
   estimatedTime: number;
 }> {
-  // Get the amount to be received after bridge fees
-  const amountToBeReceived = await sdk.getAmountToBeReceived(
-    amount,
-    sourceToken,
-    destinationToken
-  );
+  try {
+    const { Messenger } = await import('@allbridge/bridge-core-sdk');
 
-  // Calculate fee as difference between sent and received amounts
-  const fee = (parseFloat(amount) - parseFloat(amountToBeReceived)).toString();
+    const amountToBeReceived = await sdk.getAmountToBeReceived(
+      amount,
+      sourceToken,
+      destinationToken
+    );
 
-  // Get estimated transfer time in milliseconds
-  const estimatedTime = await sdk.getAverageTransferTime(
-    sourceToken,
-    destinationToken,
-    Messenger.ALLBRIDGE
-  );
+    const fee = (parseFloat(amount) - parseFloat(amountToBeReceived)).toString();
 
-  return {
-    receiveAmount: amountToBeReceived,
-    fee,
-    estimatedTime,
-  };
+    const estimatedTime = await sdk.getAverageTransferTime(
+      sourceToken,
+      destinationToken,
+      Messenger.ALLBRIDGE
+    );
+
+    return { receiveAmount: amountToBeReceived, fee, estimatedTime };
+  } catch (error) {
+    invalidateSdkCache();
+    throw error;
+  }
 }
