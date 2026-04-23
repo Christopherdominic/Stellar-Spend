@@ -77,10 +77,10 @@ export default function HistoryPage() {
         onDisconnect={disconnect}
       />
 
-      <section className="border border-[#333333] px-[2.6rem] py-8 max-[1100px]:p-4 mt-6">
-        <div className="mb-6 flex items-center justify-between">
+      <section className="border border-[#333333] px-4 py-6 sm:px-8 sm:py-8 mt-6">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-wider mb-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-wider mb-1">
               Transaction History
             </h1>
             <p className="text-xs text-[#777777] tracking-wide">
@@ -92,7 +92,7 @@ export default function HistoryPage() {
           <a
             href="/"
             className={cn(
-              "text-[10px] tracking-widest uppercase text-[#c9a962] border border-[#c9a962] px-4 py-2",
+              "self-start sm:self-auto text-[10px] tracking-widest uppercase text-[#c9a962] border border-[#c9a962] px-4 py-2 min-h-[44px] flex items-center",
               "hover:bg-[#c9a962] hover:text-[#0a0a0a] transition-colors duration-150",
               "focus:outline-none focus-visible:ring-1 focus-visible:ring-[#c9a962]"
             )}
@@ -109,7 +109,7 @@ export default function HistoryPage() {
             <button
               onClick={connect}
               className={cn(
-                "px-6 py-3 text-xs tracking-widest border border-[#c9a962]",
+                "px-6 py-3 min-h-[44px] text-xs tracking-widest border border-[#c9a962]",
                 "text-[#c9a962] bg-transparent transition-colors duration-150",
                 "hover:bg-[#c9a962] hover:text-[#0a0a0a]",
                 "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a962]"

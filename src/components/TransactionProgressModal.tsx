@@ -87,7 +87,7 @@ export function TransactionProgressModal({
           </div>
         )}
 
-        <div className="relative p-8 flex flex-col items-center">
+        <div className="relative p-4 sm:p-8 flex flex-col items-center">
           {/* Status Icon */}
           <div className="mb-8 relative h-20 w-20 flex items-center justify-center">
              {step === "success" ? (

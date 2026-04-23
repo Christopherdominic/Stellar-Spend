@@ -253,7 +253,7 @@ function FeeMethodSelector({ value, onChange, usdcFee, xlmFee, disabled }: FeeMe
               onClick={() => onChange(method)}
               disabled={disabled}
               className={cn(
-                "flex-1 py-2.5 px-3 text-xs tracking-widest border transition-colors duration-150",
+                "flex-1 py-2.5 px-3 min-h-[44px] text-xs tracking-widest border transition-colors duration-150",
                 "focus:outline-none focus-visible:ring-1 focus-visible:ring-[#c9a962]",
                 "disabled:opacity-40 disabled:cursor-not-allowed",
                 active
@@ -730,7 +730,7 @@ export default function FormCard({
           disabled={getCtaDisabled(ctaState)}
           aria-label={getCtaLabel(ctaState)}
           className={cn(
-            "w-full py-4 text-xs font-bold tracking-[0.2em] transition-all duration-200",
+            "w-full py-4 min-h-[52px] text-xs font-bold tracking-[0.2em] transition-all duration-200",
             "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a962] focus-visible:ring-offset-2 focus-visible:ring-offset-[#111111]",
             ctaState === "ready"
               ? "bg-[#c9a962] text-black hover:bg-[#d4b982]"
