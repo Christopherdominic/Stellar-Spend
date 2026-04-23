@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TransactionStorage, type Transaction } from "@/lib/transaction-storage";
 import { useStellarWallet } from "@/hooks/useStellarWallet";
 import Header from "@/components/Header";
 import ExportControls from "@/components/ExportControls";
 import { cn } from "@/lib/cn";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function formatDate(timestamp: number): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -24,13 +28,8 @@ function truncateTxHash(hash: string): string {
 
 function getCurrencySymbol(currency: string): string {
   const symbols: Record<string, string> = {
-    NGN: "₦",
-    USD: "$",
-    EUR: "€",
-    GBP: "£",
-    KES: "KSh",
-    GHS: "₵",
-    ZAR: "R",
+    NGN: "₦", USD: "$", EUR: "€", GBP: "£",
+    KES: "KSh", GHS: "₵", ZAR: "R",
   };
   return symbols[currency.toUpperCase()] || currency.toUpperCase();
 }
@@ -41,31 +40,131 @@ function StatusBadge({ status }: { status: Transaction["status"] }) {
     completed: "bg-green-500/20 text-green-500 border-green-500/30",
     failed: "bg-red-500/20 text-red-500 border-red-500/30",
   };
-
   return (
-    <span
-      className={cn(
-        "inline-block px-2.5 py-0.5 text-[10px] tracking-widest uppercase font-semibold border",
-        styles[status]
-      )}
-    >
+    <span className={cn("inline-block px-2.5 py-0.5 text-[10px] tracking-widest uppercase font-semibold border", styles[status])}>
       {status}
     </span>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Filter state
+// ---------------------------------------------------------------------------
+
+type SortField = "timestamp" | "amount";
+type SortDir = "asc" | "desc";
+
+interface Filters {
+  search: string;
+  status: Transaction["status"] | "all";
+  dateFrom: string;
+  dateTo: string;
+  amountMin: string;
+  amountMax: string;
+  sortField: SortField;
+  sortDir: SortDir;
+}
+
+const DEFAULT_FILTERS: Filters = {
+  search: "",
+  status: "all",
+  dateFrom: "",
+  dateTo: "",
+  amountMin: "",
+  amountMax: "",
+  sortField: "timestamp",
+  sortDir: "desc",
+};
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
 export default function HistoryPage() {
   const { wallet, isConnected, isConnecting, connect, disconnect } = useStellarWallet();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
 
   useEffect(() => {
     if (wallet?.publicKey) {
-      const userTxs = TransactionStorage.getByUser(wallet.publicKey);
-      setTransactions(userTxs);
+      setTransactions(TransactionStorage.getByUser(wallet.publicKey));
     } else {
       setTransactions([]);
     }
   }, [wallet?.publicKey]);
+
+  const set = <K extends keyof Filters>(key: K, value: Filters[K]) =>
+    setFilters((prev) => ({ ...prev, [key]: value }));
+
+  const toggleSort = (field: SortField) =>
+    setFilters((prev) => ({
+      ...prev,
+      sortField: field,
+      sortDir: prev.sortField === field && prev.sortDir === "desc" ? "asc" : "desc",
+    }));
+
+  const filtered = useMemo(() => {
+    let result = [...transactions];
+
+    // Search by ID or tx hash
+    if (filters.search.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      result = result.filter(
+        (tx) =>
+          tx.id.toLowerCase().includes(q) ||
+          (tx.stellarTxHash?.toLowerCase().includes(q) ?? false)
+      );
+    }
+
+    // Status filter
+    if (filters.status !== "all") {
+      result = result.filter((tx) => tx.status === filters.status);
+    }
+
+    // Date range
+    if (filters.dateFrom) {
+      const from = new Date(filters.dateFrom).getTime();
+      result = result.filter((tx) => tx.timestamp >= from);
+    }
+    if (filters.dateTo) {
+      // include the full end day
+      const to = new Date(filters.dateTo).getTime() + 86_400_000 - 1;
+      result = result.filter((tx) => tx.timestamp <= to);
+    }
+
+    // Amount range
+    if (filters.amountMin !== "") {
+      const min = parseFloat(filters.amountMin);
+      if (!isNaN(min)) result = result.filter((tx) => parseFloat(tx.amount) >= min);
+    }
+    if (filters.amountMax !== "") {
+      const max = parseFloat(filters.amountMax);
+      if (!isNaN(max)) result = result.filter((tx) => parseFloat(tx.amount) <= max);
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      let diff = 0;
+      if (filters.sortField === "timestamp") diff = a.timestamp - b.timestamp;
+      else diff = parseFloat(a.amount) - parseFloat(b.amount);
+      return filters.sortDir === "asc" ? diff : -diff;
+    });
+
+    return result;
+  }, [transactions, filters]);
+
+  const hasActiveFilters =
+    filters.search ||
+    filters.status !== "all" ||
+    filters.dateFrom ||
+    filters.dateTo ||
+    filters.amountMin ||
+    filters.amountMax;
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (filters.sortField !== field) return <span className="ml-1 opacity-30">↕</span>;
+    return <span className="ml-1">{filters.sortDir === "asc" ? "↑" : "↓"}</span>;
+  };
 
   return (
     <main className="min-h-screen p-4 bg-[#0a0a0a]">
@@ -79,6 +178,7 @@ export default function HistoryPage() {
       />
 
       <section className="border border-[#333333] px-[2.6rem] py-8 max-[1100px]:p-4 mt-6">
+        {/* Page header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white tracking-wider mb-2">
@@ -86,7 +186,7 @@ export default function HistoryPage() {
             </h1>
             <p className="text-xs text-[#777777] tracking-wide">
               {isConnected
-                ? `Showing ${transactions.length} transaction${transactions.length !== 1 ? "s" : ""}`
+                ? `Showing ${filtered.length} of ${transactions.length} transaction${transactions.length !== 1 ? "s" : ""}`
                 : "Connect your wallet to view transaction history"}
             </p>
           </div>
@@ -108,7 +208,7 @@ export default function HistoryPage() {
               Please connect your wallet to view transaction history
             </p>
             <button
-              onClick={connect}
+              onClick={() => connect()}
               className={cn(
                 "px-6 py-3 text-xs tracking-widest border border-[#c9a962]",
                 "text-[#c9a962] bg-transparent transition-colors duration-150",
@@ -118,10 +218,6 @@ export default function HistoryPage() {
             >
               CONNECT WALLET
             </button>
-          </div>
-        ) : transactions.length === 0 ? (
-          <div className="border border-[#333333] bg-[#111111] p-12 text-center">
-            <p className="text-sm text-[#777777]">No transactions found</p>
           </div>
         ) : (
           <>
@@ -145,9 +241,21 @@ export default function HistoryPage() {
                   <tr
                     key={tx.id}
                     className={cn(
-                      "border-b border-[#222222] transition-colors duration-100",
-                      i % 2 === 0 ? "bg-[#111111]" : "bg-[#0f0f0f]",
-                      "hover:bg-[#1a1a1a]"
+                      "w-24 bg-[#0a0a0a] border border-[#333333] px-3 py-2",
+                      "text-xs text-white placeholder-[#555555]",
+                      "focus:outline-none focus:border-[#c9a962]"
+                    )}
+                  />
+                </div>
+
+                {/* Reset */}
+                {hasActiveFilters && (
+                  <button
+                    onClick={() => setFilters(DEFAULT_FILTERS)}
+                    className={cn(
+                      "ml-auto text-[10px] tracking-widest uppercase px-3 py-2",
+                      "border border-[#555555] text-[#777777]",
+                      "hover:border-[#c9a962] hover:text-[#c9a962] transition-colors duration-150"
                     )}
                   >
                     <td className="px-5 py-3 text-xs text-[#aaaaaa] whitespace-nowrap">
