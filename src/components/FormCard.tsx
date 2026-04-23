@@ -1,26 +1,15 @@
 "use client";
 
-import {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  type ChangeEvent,
-} from "react";
 import { cn } from "@/lib/cn";
 import { validateAmount, validateAccountNumber, isValidQuote, validateEvmAddress } from "@/lib/offramp/utils/validation";
 import { buildQuote, calculateBridgeAmount } from "@/lib/offramp/utils/quote-fetcher";
 import { getCurrencyFlag } from "@/lib/currency-flags";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { FormCardSkeleton } from "@/components/skeletons";
 
 // ---------------------------------------------------------------------------
 // Types
-// ----------------------------------------------------------------------------
-
-interface GasFeeOptions {
-  native: { int: string; float: string } | null;
-  stablecoin: { int: string; float: string } | null;
-}
-
+// ---------------------------------------------------------------------------
 
 export interface FeeOption {
   label: string;
@@ -29,50 +18,37 @@ export interface FeeOption {
 }
 
 export interface FormCardProps {
-  /** Wallet state */
-  isConnected: boolean;
-  isConnecting: boolean;
-  /** Increments to reset all fields */
-  resetKey?: number;
-  /** Callbacks */
-  onConnect: () => void;
-  onSubmit: (payload: OfframpPayload) => Promise<void>;
-  /** Lifted state for RightPanel sync */
-  onQuoteChange?: (quote: QuoteResult | null) => void;
-  onAmountChange?: (amount: string) => void;
-  onCurrencyChange?: (currency: string) => void;
-}
-
-export interface OfframpPayload {
+  // Controlled field values
   amount: string;
   currency: string;
-  institution: string;
-  accountIdentifier: string;
+  bank: string;
+  accountNumber: string;
   accountName: string;
-  feeMethod: FeeMethod;
-  quote: QuoteResult;
-}
-
-export interface QuoteResult {
-  destinationAmount: string;
-  rate: number;
-  currency: string;
-  bridgeFee: string;
-  payoutFee: string;
-  estimatedTime: number;
-}
-
-type FeeMethod = "USDC" | "XLM";
-
-interface Currency {
-  code: string;
-  name: string;
-  symbol: string;
-}
-
-interface Institution {
-  code: string;
-  name: string;
+  feeMethod: "native" | "stablecoin";
+  // Options
+  currencies: Array<{ value: string; label: string }>;
+  banks: Array<{ value: string; label: string }>;
+  feeOptions: FeeOption[];
+  // Loading states
+  isLoadingCurrencies?: boolean;
+  isLoadingBanks?: boolean;
+  isLoadingQuote?: boolean;
+  isLoadingFees?: boolean;
+  isVerifyingAccount?: boolean;
+  /** Show a full-form skeleton (e.g. on first mount before wallet is ready) */
+  isInitialLoading?: boolean;
+  // Quote display
+  quoteSuffix?: string;
+  // Wallet state
+  isConnected: boolean;
+  isConnecting: boolean;
+  // Callbacks
+  onAmountChange: (v: string) => void;
+  onCurrencyChange: (v: string) => void;
+  onBankChange: (v: string) => void;
+  onAccountNumberChange: (v: string) => void;
+  onFeeMethodChange: (v: "native" | "stablecoin") => void;
+  onSubmit: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +307,7 @@ function FeeMethodSelector({ value, onChange, usdcFee, xlmFee, disabled }: FeeMe
               onClick={() => onChange(method)}
               disabled={disabled}
               className={cn(
-                "flex-1 py-2.5 px-3 text-xs tracking-widest border transition-colors duration-150",
+                "flex-1 py-2.5 px-3 min-h-[44px] text-xs tracking-widest border transition-colors duration-150",
                 "focus:outline-none focus-visible:ring-1 focus-visible:ring-[#c9a962]",
                 "disabled:opacity-40 disabled:cursor-not-allowed",
                 active
@@ -428,15 +404,31 @@ function getCtaDisabled(state: CtaState): boolean {
   return state === "connecting" || state === "submitting" || state === "invalid";
 }
 
-export default function FormCard({
+export function FormCard({
+  amount,
+  currency,
+  bank,
+  accountNumber,
+  accountName,
+  feeMethod,
+  currencies,
+  banks,
+  feeOptions,
+  isLoadingCurrencies,
+  isLoadingBanks,
+  isLoadingQuote,
+  isLoadingFees,
+  isVerifyingAccount,
+  isInitialLoading,
+  quoteSuffix,
   isConnected,
   isConnecting,
-  resetKey = 0,
-  onConnect,
-  onSubmit,
-  onQuoteChange,
   onAmountChange,
   onCurrencyChange,
+  onBankChange,
+  onAccountNumberChange,
+  onFeeMethodChange,
+  onSubmit,
 }: FormCardProps) {
   const [amount, setAmount] = useState("");
   const [feeMethod, setFeeMethod] = useState<FeeMethod>("USDC");
@@ -673,82 +665,20 @@ export default function FormCard({
     fetchQuote(amount, val, feeMethod);
   }
 
-  function handleFeeMethodChange(val: FeeMethod) {
-    setFeeMethod(val);
-    fetchQuote(amount, currency, val);
-  }
+  const ctaLabel = isConnecting
+    ? "CONNECTING..."
+    : !isConnected
+    ? "CONNECT WALLET"
+    : "INITIATE OFFRAMP →";
 
-  function handleAccountNumberChange(val: string) {
-    const digits = val.replace(/\D/g, "").slice(0, 10);
-    setAccountNumber(digits);
-    setAccountError(digits.length > 0 && digits.length < 10 ? "Account number must be 10 digits" : "");
-    verifyAccount(digits, institution, currency);
-  }
-
-  function handleInstitutionChange(val: string) {
-    setInstitution(val);
-    setAccountName("");
-    verifyAccount(accountNumber, val, currency);
-  }
-
-  const isFormValid =
-    isConnected &&
-    validateAmount(amount) &&
-    parseFloat(amount) >= 0.7 &&
-    !!currency &&
-    !!institution &&
-    validateAccountNumber(accountNumber) &&
-    !!accountName &&
-    !!quote &&
-    !amountError &&
-    !accountError;
-
-  function getCtaState(): CtaState {
-    if (!isConnected && !isConnecting) return "disconnected";
-    if (isConnecting) return "connecting";
-    if (isSubmitting) return "submitting";
-    if (!isFormValid) return "invalid";
-    return "ready";
-  }
-
-  const ctaState = getCtaState();
-
-  async function handleSubmitForm() {
-    if (!isFormValid || !quote) return;
-    
-    // Validate NEXT_PUBLIC_BASE_RETURN_ADDRESS before proceeding
-    const baseReturnAddress = process.env.NEXT_PUBLIC_BASE_RETURN_ADDRESS;
-    if (!baseReturnAddress) {
-      throw new Error("NEXT_PUBLIC_BASE_RETURN_ADDRESS is missing");
-    }
-    if (!validateEvmAddress(baseReturnAddress)) {
-      throw new Error("NEXT_PUBLIC_BASE_RETURN_ADDRESS is not a valid EVM address");
-    }
-    
-    setIsSubmitting(true);
-    try {
-      await onSubmit({
-        amount,
-        currency,
-        institution,
-        accountIdentifier: accountNumber,
-        accountName,
-        feeMethod,
-        quote,
-      });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && isFormValid && ctaState === "ready") {
-      e.preventDefault();
-      handleSubmitForm();
-    }
-  };
+  const ctaDisabled =
+    isConnecting ||
+    !isConnected ||
+    !amount ||
+    !currency ||
+    !bank ||
+    !accountNumber ||
+    !accountName;
 
   return (
     <div className="flex flex-col gap-6" onKeyDown={handleKeyDown}>
@@ -768,13 +698,39 @@ export default function FormCard({
           disabled={!isConnected || isSubmitting}
         />
 
-        <FeeMethodSelector
-          value={feeMethod}
-          onChange={handleFeeMethodChange}
-          usdcFee={gasFees?.stablecoin?.float || null}
-          xlmFee={gasFees?.native?.float || null}
-          disabled={!isConnected}
-        />
+      {/* Fee method */}
+      <div className="flex flex-col gap-1.5">
+        <Label>Gas Fee Method</Label>
+        {isLoadingFees ? (
+          <div className="flex gap-2">
+            <Skeleton width="50%" height={44} aria-label="Loading fee option…" />
+            <Skeleton width="50%" height={44} aria-label="Loading fee option…" />
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            {feeOptions.map((opt) => (
+              <button
+                key={opt.method}
+                type="button"
+                aria-label={opt.label}
+                onClick={() => onFeeMethodChange(opt.method)}
+                disabled={!isConnected}
+                className={cn(
+                  "flex-1 py-2.5 px-3 text-xs tracking-widest border transition-colors duration-150",
+                  "focus:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                  feeMethod === opt.method
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-line bg-bg text-muted hover:border-accent/50"
+                )}
+              >
+                <span className="block font-semibold">{opt.label}</span>
+                <span className="block text-[10px] mt-0.5 opacity-80">{opt.amount}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <SelectField
@@ -807,19 +763,52 @@ export default function FormCard({
           />
         </div>
 
-        <InputField
-          label="Account Number"
+        {/* Bank */}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="bank">Bank / Institution</Label>
+          {isLoadingBanks ? (
+            <Skeleton width="100%" height={42} aria-label="Loading bank options…" />
+          ) : (
+            <select
+              id="bank"
+              aria-label="BANK"
+              value={bank}
+              onChange={(e) => onBankChange(e.target.value)}
+              disabled={!isConnected || !currency}
+              className={cn(
+                "w-full appearance-none bg-bg border border-line px-3 py-2.5 text-sm",
+                "focus:outline-none focus-visible:ring-1 focus-visible:ring-accent focus:border-accent",
+                "disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150",
+                bank ? "text-text" : "text-[#444444]"
+              )}
+            >
+              <option value="" disabled>{currency ? "Select bank..." : "Select currency first"}</option>
+              {banks.map((b) => (
+                <option key={b.value} value={b.value}>{b.label}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+
+      {/* Account number */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="accountNumber">Account Number</Label>
+        <input
           id="accountNumber"
           value={accountNumber}
           onChange={handleAccountNumberChange}
           onBlur={() => touchField("accountNumber")}
           inputMode="numeric"
+          value={accountNumber}
+          onChange={(e) => onAccountNumberChange(e.target.value.replace(/\D/g, "").slice(0, 10))}
           placeholder="0000000000"
           error={accountError || verifyError}
           success={validateAccountNumber(accountNumber) ? "Account number valid" : undefined}
           touched={touchedFields["accountNumber"]}
           disabled={!institution || !isConnected || isSubmitting}
         />
+      </div>
 
         <Field label="Account Name" value={accountName} loading={isVerifyingAccount} success={!!accountName} />
 
@@ -830,17 +819,35 @@ export default function FormCard({
           disabled={getCtaDisabled(ctaState)}
           aria-label={getCtaLabel(ctaState)}
           className={cn(
-            "w-full py-4 text-xs font-bold tracking-[0.2em] transition-all duration-200",
+            "w-full py-4 min-h-[52px] text-xs font-bold tracking-[0.2em] transition-all duration-200",
             "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a962] focus-visible:ring-offset-2 focus-visible:ring-offset-[#111111]",
             ctaState === "ready"
               ? "bg-[#c9a962] text-black hover:bg-[#d4b982]"
               : "bg-[#222222] text-[#555555] cursor-not-allowed border border-[#333333]",
             (ctaState === "connecting" || ctaState === "submitting") && "animate-pulse"
           )}
-        >
-          {getCtaLabel(ctaState)}
-        </button>
+        </div>
       </div>
-    </div>
+
+      {/* CTA */}
+      <button
+        type="button"
+        onClick={onSubmit}
+        disabled={ctaDisabled}
+        aria-label={ctaLabel}
+        className={cn(
+          "w-full py-4 text-xs font-bold tracking-[0.2em] transition-all duration-200",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-panel",
+          !ctaDisabled
+            ? "bg-accent text-black hover:bg-[#d4b982]"
+            : "bg-[#222222] text-[#555555] cursor-not-allowed border border-line",
+          isConnecting && "animate-pulse"
+        )}
+      >
+        {ctaLabel}
+      </button>
+    </section>
   );
 }
+
+export default FormCard;

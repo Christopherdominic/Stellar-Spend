@@ -182,7 +182,7 @@ export default function HistoryPage() {
         {/* Page header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-wider mb-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-wider mb-1">
               Transaction History
             </h1>
             <p className="text-xs text-[#777777] tracking-wide">
@@ -194,7 +194,7 @@ export default function HistoryPage() {
           <a
             href="/"
             className={cn(
-              "text-[10px] tracking-widest uppercase text-[#c9a962] border border-[#c9a962] px-4 py-2",
+              "self-start sm:self-auto text-[10px] tracking-widest uppercase text-[#c9a962] border border-[#c9a962] px-4 py-2 min-h-[44px] flex items-center",
               "hover:bg-[#c9a962] hover:text-[#0a0a0a] transition-colors duration-150",
               "focus:outline-none focus-visible:ring-1 focus-visible:ring-[#c9a962]"
             )}
@@ -211,7 +211,7 @@ export default function HistoryPage() {
             <button
               onClick={() => connect()}
               className={cn(
-                "px-6 py-3 text-xs tracking-widest border border-[#c9a962]",
+                "px-6 py-3 min-h-[44px] text-xs tracking-widest border border-[#c9a962]",
                 "text-[#c9a962] bg-transparent transition-colors duration-150",
                 "hover:bg-[#c9a962] hover:text-[#0a0a0a]",
                 "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a962]"
@@ -222,116 +222,25 @@ export default function HistoryPage() {
           </div>
         ) : (
           <>
-            {/* ── Filter bar ── */}
-            <div className="border border-[#333333] bg-[#111111] p-4 mb-4 space-y-3">
-              {/* Row 1: search + status */}
-              <div className="flex flex-wrap gap-3">
-                {/* Search by ID / tx hash */}
-                <input
-                  type="text"
-                  placeholder="Search by transaction ID or tx hash…"
-                  value={filters.search}
-                  onChange={(e) => set("search", e.target.value)}
-                  aria-label="Search transactions"
-                  className={cn(
-                    "flex-1 min-w-[200px] bg-[#0a0a0a] border border-[#333333] px-3 py-2",
-                    "text-xs text-white placeholder-[#555555]",
-                    "focus:outline-none focus:border-[#c9a962]"
-                  )}
-                />
-
-                {/* Status filter */}
-                <select
-                  value={filters.status}
-                  onChange={(e) => set("status", e.target.value as Filters["status"])}
-                  aria-label="Filter by status"
-                  className={cn(
-                    "bg-[#0a0a0a] border border-[#333333] px-3 py-2",
-                    "text-xs text-white",
-                    "focus:outline-none focus:border-[#c9a962]"
-                  )}
-                >
-                  <option value="all">All statuses</option>
-                  <option value="pending">Pending</option>
-                  <option value="completed">Completed</option>
-                  <option value="failed">Failed</option>
-                </select>
-              </div>
-
-              {/* Row 2: date range + amount range + reset */}
-              <div className="flex flex-wrap gap-3 items-center">
-                {/* Date from */}
-                <div className="flex items-center gap-2">
-                  <label className="text-[10px] text-[#777777] uppercase tracking-widest whitespace-nowrap">
-                    From
-                  </label>
-                  <input
-                    type="date"
-                    value={filters.dateFrom}
-                    onChange={(e) => set("dateFrom", e.target.value)}
-                    aria-label="Date from"
-                    className={cn(
-                      "bg-[#0a0a0a] border border-[#333333] px-3 py-2",
-                      "text-xs text-white",
-                      "focus:outline-none focus:border-[#c9a962]",
-                      "[color-scheme:dark]"
-                    )}
-                  />
-                </div>
-
-                {/* Date to */}
-                <div className="flex items-center gap-2">
-                  <label className="text-[10px] text-[#777777] uppercase tracking-widest whitespace-nowrap">
-                    To
-                  </label>
-                  <input
-                    type="date"
-                    value={filters.dateTo}
-                    onChange={(e) => set("dateTo", e.target.value)}
-                    aria-label="Date to"
-                    className={cn(
-                      "bg-[#0a0a0a] border border-[#333333] px-3 py-2",
-                      "text-xs text-white",
-                      "focus:outline-none focus:border-[#c9a962]",
-                      "[color-scheme:dark]"
-                    )}
-                  />
-                </div>
-
-                {/* Amount min */}
-                <div className="flex items-center gap-2">
-                  <label className="text-[10px] text-[#777777] uppercase tracking-widest whitespace-nowrap">
-                    Min USDC
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="0"
-                    value={filters.amountMin}
-                    onChange={(e) => set("amountMin", e.target.value)}
-                    aria-label="Minimum amount"
-                    className={cn(
-                      "w-24 bg-[#0a0a0a] border border-[#333333] px-3 py-2",
-                      "text-xs text-white placeholder-[#555555]",
-                      "focus:outline-none focus:border-[#c9a962]"
-                    )}
-                  />
-                </div>
-
-                {/* Amount max */}
-                <div className="flex items-center gap-2">
-                  <label className="text-[10px] text-[#777777] uppercase tracking-widest whitespace-nowrap">
-                    Max USDC
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="∞"
-                    value={filters.amountMax}
-                    onChange={(e) => set("amountMax", e.target.value)}
-                    aria-label="Maximum amount"
+            <ExportControls transactions={transactions} walletAddress={wallet?.publicKey} />
+            <div className="border border-[#333333] bg-[#111111] overflow-x-auto mt-4">
+            <table className="w-full min-w-[800px] border-collapse">
+              <thead>
+                <tr className="bg-[#c9a962]">
+                  {["DATE", "TX HASH", "AMOUNT", "CURRENCY", "BANK", "STATUS"].map((col) => (
+                    <th
+                      key={col}
+                      className="px-5 py-2.5 text-left text-[10px] tracking-[0.18em] font-semibold text-[#0a0a0a] uppercase whitespace-nowrap"
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.map((tx, i) => (
+                  <tr
+                    key={tx.id}
                     className={cn(
                       "w-24 bg-[#0a0a0a] border border-[#333333] px-3 py-2",
                       "text-xs text-white placeholder-[#555555]",

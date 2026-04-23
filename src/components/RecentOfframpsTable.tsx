@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 import type { RecentOfframpRow } from "@/types/stellaramp";
 import { CopyButton } from "./CopyButton";
 import { getCurrencyFlag } from "@/lib/currency-flags";
+import { TransactionTableSkeleton } from "./skeletons";
 
 // ---------------------------------------------------------------------------
 // Mock data — replaced by real TransactionStorage rows when wired up
@@ -21,6 +22,7 @@ const MOCK_ROWS: RecentOfframpRow[] = [
 
 export interface RecentOfframpsTableProps {
   rows?: ReadonlyArray<RecentOfframpRow>;
+  isLoading?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,7 +60,11 @@ function StatusBadge({ status }: { status: RecentOfframpRow["status"] }) {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function RecentOfframpsTable({ rows = MOCK_ROWS }: RecentOfframpsTableProps) {
+export default function RecentOfframpsTable({ rows = MOCK_ROWS, isLoading }: RecentOfframpsTableProps) {
+  if (isLoading) {
+    return <TransactionTableSkeleton rows={3} />;
+  }
+
   return (
     <div
       data-testid="RecentOfframpsTable"
@@ -74,7 +80,7 @@ export default function RecentOfframpsTable({ rows = MOCK_ROWS }: RecentOfframps
         <a
           href="/history"
           className={cn(
-            "text-[10px] tracking-widest uppercase text-[#c9a962] border border-[#c9a962] px-3 py-1",
+            "text-[10px] tracking-widest uppercase text-[#c9a962] border border-[#c9a962] px-3 py-1 min-h-[44px] flex items-center",
             "hover:bg-[#c9a962] hover:text-[#0a0a0a] transition-colors duration-150",
             "focus:outline-none focus-visible:ring-1 focus-visible:ring-[#c9a962]"
           )}

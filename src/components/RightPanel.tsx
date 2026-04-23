@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { QuoteDisplaySkeleton } from "./skeletons";
 
 export interface RightPanelProps {
   isConnected: boolean;
@@ -154,7 +155,7 @@ function HeroPanel({
         <button
           onClick={onConnect}
           className={cn(
-            "mt-1 w-full py-2.5 text-xs tracking-widest border border-[#c9a962]",
+            "mt-1 w-full py-2.5 min-h-[44px] text-xs tracking-widest border border-[#c9a962]",
             "text-[#c9a962] bg-transparent transition-colors duration-150",
             "hover:bg-[#c9a962] hover:text-[#0a0a0a]",
             "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a962] focus-visible:ring-offset-2 focus-visible:ring-offset-[#111111]"
@@ -192,6 +193,11 @@ function BreakdownRow({ label, value, muted }: BreakdownRowProps) {
 
 export default function RightPanel(props: RightPanelProps) {
   const { quote, isConnected, isLoadingQuote, currency } = props;
+
+  // Show full skeleton when loading quote for the first time (no prior quote)
+  if (isLoadingQuote && !quote) {
+    return <QuoteDisplaySkeleton />;
+  }
 
   const platformFeeUsdc =
     quote && parseFloat(props.amount) > 0
