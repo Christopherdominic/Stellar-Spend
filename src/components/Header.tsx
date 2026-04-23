@@ -3,6 +3,7 @@
 import { cn } from "@/lib/cn";
 import { ThemeToggle } from "./ThemeToggle";
 import { CopyButton } from "./CopyButton";
+import { WalletConnectionSkeleton } from "./skeletons";
 
 export interface HeaderProps {
   subtitle: string;
@@ -106,7 +107,7 @@ export function Header({
         {isConnected && (
           <div className="flex flex-col items-end gap-0.5 max-[720px]:items-start">
             {isBalanceLoading ? (
-              <span className="text-xs text-[#777777] tracking-widest">loading...</span>
+              <WalletConnectionSkeleton />
             ) : (
               <>
                 <span className="text-xs text-[#c9a962] tracking-wider">
